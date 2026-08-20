@@ -1,290 +1,268 @@
-# Multimodal Video Deepfake Detection and Explanation
-### A Zero-shot Approach via RAG and MLLM Reasoning
+<div align="center">
 
-> Phát hiện deepfake video đa phương thức theo hướng **zero-shot**: học "thế nào là bình thường" từ
-> các video **THỰC** (genuine), định lượng độ bất thường của video cần kiểm tra theo từng đoạn 4 giây,
-> rồi dùng **MLLM** (Gemini / GPT) để suy luận và **giải thích** kết quả dựa trên bằng chứng đã được
-> truy xuất (RAG).
+# VERA: A Scalable Zero-Shot Framework for Explainable Deepfake Detection in Long-Form Video
 
----
+**Ung Hoang Long · Truong Tran Duy Dinh · Son T. Luu***
 
-## 1. Ý tưởng cốt lõi
+University of Information Technology, VNU-HCM, Ho Chi Minh City, Vietnam
 
-### Zero-shot — không cần dữ liệu deepfake để train
-Các detector deepfake truyền thống huấn luyện trên một tập video fake cụ thể (FaceForensics++, ...),
-nên dễ overfit vào "dấu vết" của đúng những kỹ thuật tạo fake đó và **tụt hiệu năng khi gặp kỹ thuật mới**.
+*Corresponding author · Published at **CSoNet 2026** (LNCS, Springer Nature)*
 
-Pipeline này đi theo hướng khác: **Module 3** là một autoencoder (MVAE-PoE) chỉ được huấn luyện trên
-video **genuine** (thực) — nó học phân phối "bình thường" của 21 đặc trưng pháp y (visual + audio).
-Khi gặp một video bất kỳ, mỗi đoạn 4 giây được so với phân phối genuine này → **anomaly score**.
-Vì không học bất kỳ "dấu vết fake" cụ thể nào, cách này **zero-shot** với mọi phương pháp tạo deepfake.
+[![Paper](https://img.shields.io/badge/Paper-CSoNet_2026-blue)](https://github.com/UngHoangLong/VERA)
+[![Dataset Splits](https://img.shields.io/badge/Data_Splits-vera__mavosdd__splits-green)](vera_mavosdd_splits/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-### RAG — truy xuất bằng chứng, không phải truy xuất tài liệu
-"Retrieval" ở đây không phải tìm trong một corpus văn bản, mà là **truy xuất chính những đoạn (chunk)
-bất thường nhất của video** (Module 4 xếp hạng theo anomaly score từ Module 3). Những chunk này —
-kèm giá trị đặc trưng, baseline genuine (p50/p95), z-score, mức độ nghiêm trọng — chính là "documents"
-được đưa vào context cho MLLM.
-
-### MLLM Reasoning — suy luận & giải thích có căn cứ
-Module 5 đưa evidence đã truy xuất vào một prompt Chain-of-Thought (xem
-[`src/module_5_agent/PROMPT_DESIGN_PROPOSAL.md`](src/module_5_agent/PROMPT_DESIGN_PROPOSAL.md)) để
-MLLM tự suy luận theo 4 bước (fast scan → deep analysis → temporal pattern → tổng hợp) và trả về:
-- **assessment**: `GENUINE | UNCERTAIN | SUSPICIOUS | LIKELY_DEEPFAKE`
-- **deepfake_type**: `FACE_SWAP | LIP_SYNC | FULL_SYNTHESIS | AUDIO_ONLY | NONE`
-- **giải thích bằng ngôn ngữ tự nhiên**, bám vào các feature/chunk cụ thể — đây là phần "Explanation"
-  trong tên đề tài.
+</div>
 
 ---
 
-## 2. Kiến trúc Pipeline
+## Overview
 
-```
-                         data/raw/<mode>/*.mp4
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │  MODULE 1 — Chunking & Face Cropping                          │
-   │  src/module_1_chunking/video_slicer.py --mode {genuine,infer} │
-   │                                                                │
-   │  • Cắt video thành chunk 4s (stride 2s, có overlap)           │
-   │  • Mỗi chunk -> slide 0.5s -> crop khuôn mặt + landmark (.npy)│
-   │  • Loại bỏ chunk không đủ khuôn mặt (<= 3 slide hợp lệ)       │
-   └─────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-                data/interim/<mode>/<video_id>/chunk_XXXX/
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │  MODULE 2 — Feature Extraction (21 đặc trưng pháp y)          │
-   │                                                                │
-   │  2.1 Visual-Spatial Anomalies     main_21.py     13 features  │
-   │      blur · texture(GLCM) · kinematics · gaze/pose ·          │
-   │      iris jitter · face blending                              │
-   │      -> tạo khung final_reports_<mode>/<id>_report.json       │
-   │                          │                                     │
-   │                          ▼                                     │
-   │  2.2 Audio-Visual Consistency      main_22.py     6 features  │
-   │      VSR + ASR -> CCFD (nội dung) · SCFD (ngữ nghĩa) ·         │
-   │      TCFD (đồng bộ thời gian)                                  │
-   │                          │                                     │
-   │                          ▼                                     │
-   │  2.3 Audio-Only Artifacts          main_23.py     2 features  │
-   │      vocal jitter / shimmer (giọng nói tổng hợp)               │
-   └─────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-                final_reports_<mode>/<video_id>_report.json
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │  MODULE 3 — MVAE-PoE Anomaly Scoring                          │
-   │  src/module_3_autoencoder/{train.py, infer.py}                │
-   │                                                                │
-   │  mode=genuine -> train.py -> module3_models/                  │
-   │      (học phân phối "bình thường" từ video THỰC,              │
-   │       tự chia train/val 85/15 theo VIDEO, calibrate threshold)│
-   │                                                                │
-   │  mode=infer   -> infer.py -> evidence_reports/                │
-   │      (so từng chunk với baseline genuine                      │
-   │       -> anomaly score + severity + giải thích sơ bộ)         │
-   └─────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-              evidence_reports/<video_id>_evidence.json
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │  MODULE 4 — Retrieval  (đang phát triển)                      │
-   │  ranker.py   : xếp hạng & chọn top-k chunk bất thường nhất    │
-   │  packager.py : cắt clip video tương ứng + đóng gói JSON       │
-   └─────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-              top-k x (video clip + evidence JSON)
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │  MODULE 5 — MLLM Reasoning  (đang phát triển)                 │
-   │  prompt_eng.py  : dựng prompt CoT 3 block                     │
-   │                   (xem PROMPT_DESIGN_PROPOSAL.md)             │
-   │  mllm_client.py : gọi Gemini / OpenAI, parse <verdict>        │
-   │                                                                │
-   │  -> verdict: GENUINE | SUSPICIOUS | LIKELY_DEEPFAKE | ...      │
-   │  -> giải thích bằng ngôn ngữ tự nhiên, có căn cứ              │
-   └─────────────────────────────────────────────────────────────┘
-```
+**VERA** (**V**ideo **E**vidence **R**easoning and **A**nalysis) is a modular, zero-shot pipeline for detecting and explaining deepfakes in long-form video — **without any fake training data or MLLM fine-tuning**.
 
-### Tóm tắt theo module
+<p align="center">
+  <img src="CSONET2026/figures/overview_1.png" width="100%" alt="VERA Pipeline Overview"/>
+  <br/>
+  <em>Five-stage VERA pipeline: temporal chunking → multimodal feature extraction → anomaly scoring → retrieval → MLLM reasoning.</em>
+</p>
 
-| Module | Vai trò | Input | Output | Trạng thái |
+### Key Results on MAVOS-DD (English subset, 4,891 videos)
+
+| Stage | AUC | Accuracy | Recall | F1 |
 |---|---|---|---|---|
-| 1 — Chunking | Cắt chunk 4s + crop mặt/landmark | `data/raw/<mode>/*.mp4` | `data/interim/<mode>/<video_id>/chunk_*/` | Hoàn thành |
-| 2.1 — Visual-Spatial | 13 đặc trưng thị giác | `data/interim/<mode>/` | khung `final_reports_<mode>/<id>_report.json` | Hoàn thành |
-| 2.2 — Audio-Visual Consistency | VSR/ASR → CCFD/SCFD/TCFD (6 đặc trưng) | `data/interim/<mode>/` | `data/processed/<mode>/...` + cập nhật report | Hoàn thành |
-| 2.3 — Audio-Only Artifacts | Jitter/Shimmer (2 đặc trưng) | `data/interim/<mode>/` + report | cập nhật report | Hoàn thành |
-| 3 — MVAE-PoE | Train trên genuine / tính anomaly score | `final_reports_genuine` hoặc `final_reports_infer` | `module3_models/` hoặc `evidence_reports/*_evidence.json` | Hoàn thành |
-| 4 — Retrieval | Chọn top-k chunk bất thường + cắt clip | `evidence_reports/*_evidence.json` | clip + JSON cho Module 5 | Đang phát triển |
-| 5 — MLLM Reasoning | Prompt CoT + gọi MLLM → verdict | output Module 4 | verdict JSON + giải thích | Đang phát triển (thiết kế đã hoàn chỉnh) |
+| Module 3 — Anomaly Scoring only | 0.559 | 36.25% | 4.72% | 8.78% |
+| **Module 5 — MLLM Reasoning (VERA)** | **0.594** | **67.08%** | **84.94%** | **77.04%** |
+| AVH-Align (zero-shot baseline) | 0.593 | — | — | — |
+
+> **+80 percentage points** in recall: MLLM reasoning over anomaly-guided evidence closes the gap that handcrafted features alone cannot.
+
+Recall by generative method (Module 5):
+
+| Sonic | EchoMimic | MEMO | LivePortrait | Roop | InSwapper | KNNVC | HifiFace |
+|---|---|---|---|---|---|---|---|
+| 100% | 99.3% | 97.8% | 90.2% | 87.8% | 86.7% | 77.5% | 77.0% |
 
 ---
 
-## 3. Tổ chức dữ liệu: `genuine` vs `infer`
+## Why VERA?
 
-Toàn bộ Module 1 và Module 2 nhận tham số bắt buộc **`--mode {genuine,infer}`**, được resolve tập
-trung qua [`src/utils/paths.py::get_pipeline_paths(mode)`](src/utils/paths.py). `mode` tách biệt
-hoàn toàn dữ liệu ở **mọi giai đoạn** của pipeline:
+| Challenge | VERA's approach |
+|---|---|
+| Most detectors require fake training data | Module 3 trains **only on genuine videos** |
+| MLLM methods need fine-tuning on forensic datasets | Module 5 uses a **frozen** Qwen3-VL-8B, zero-shot |
+| Long videos cannot be fed whole to an MLLM | Module 4 **retrieves the top-K most anomalous chunks** |
+| Black-box predictions are unacceptable | Module 5 produces **per-modality verdicts with free-text reasoning** |
 
-| mode | Ý nghĩa | Vai trò với Module 3 |
+---
+
+## Pipeline
+
+### Module 1 — Temporal Chunking & Face Detection
+
+<p align="center">
+  <img src="CSONET2026/figures/module_1.png" width="85%" alt="Module 1"/>
+</p>
+
+- Standardizes to 25 fps / 16 kHz audio
+- Sliding-window chunks: **4 s** length, **2 s** stride (50% overlap)
+- Each chunk → 8 non-overlapping 0.5-second slides
+- Per-frame face detection via MediaPipe FaceMesh; 468 landmarks extracted and normalized
+- Chunks with fewer than 4 valid single-face slides are discarded
+
+### Module 2 — Multimodal Feature Extraction (21 features)
+
+<p align="center">
+  <img src="CSONET2026/figures/module_2_architecture.png" width="85%" alt="Module 2"/>
+</p>
+
+Three parallel branches:
+
+| Branch | Features | Key signals |
 |---|---|---|
-| `genuine` | Video **THỰC đã biết** — toàn bộ pool dùng để huấn luyện | Input của `train.py`; tự động chia **train/val 85/15** theo VIDEO bên trong `train.py` |
-| `infer` | Video **cần đánh giá** (chưa biết real/fake — đây là "test set" theo nghĩa thông thường) | Input của `infer.py`; ra `evidence_reports/*_evidence.json` |
+| **2.1 Visual-Spatial** | 13 | Boundary blending, blur inconsistency, cheek texture, landmark kinematics, gaze-pose sync, iris jitter |
+| **2.2 Audio-Visual Consistency** | 6 | ASR–VSR transcript comparison (Whisper + Auto-AVSR), AV-HuBERT embedding similarity, lip-audio sync (VocaLiST) |
+| **2.3 Audio-Only Artifacts** | 2 | Vocal jitter, vocal shimmer |
 
-### Cấu trúc thư mục theo `mode`
+### Module 3 — MVAE-PoE Anomaly Scoring
 
-```
-data/
-├── raw/
-│   ├── genuine/<video_id>.mp4        # video thực, dùng để train Module 3
-│   └── infer/<video_id>.mp4          # video cần kiểm tra
-│
-├── interim/                          # output Module 1
-│   ├── genuine/<video_id>/chunk_0000/{video.mp4, audio.wav, slides/, metadata.json, ...}
-│   └── infer/<video_id>/chunk_0000/{...}
-│
-└── processed/                        # output trung gian Module 2.2
-    ├── genuine/{vsr_output, asr_output, ccfd_output, scfd_output, tcfd_output.json}/
-    └── infer/{...}
+<p align="center">
+  <img src="CSONET2026/figures/module_3_mvaepoe.png" width="75%" alt="Module 3 MVAE-PoE"/>
+</p>
 
-final_reports_genuine/<video_id>_report.json   # output Module 2 (genuine) -> input train Module 3
-final_reports_infer/<video_id>_report.json     # output Module 2 (infer)   -> input infer Module 3
+- Adapts MVAE-PoE ([Zhao et al., 2024](https://arxiv.org/abs/2404.xxxxx)) for anomaly detection
+- Trained **exclusively on genuine-video chunks** — no fake exemplar seen
+- Precision-weighted Product-of-Experts fusion of visual and audio views
+- Anomaly score: `s = L_visual + L_audio · avail_audio + β · L_KL`
+- Threshold τ = 15.54 (95th percentile of genuine validation scores)
 
-src/module_3_autoencoder/
-├── module3_models/                   # output train: mvae_poe.pt, preprocessor.joblib,
-│                                      #   threshold.json, feature_baseline.json
-└── evidence_reports/<video_id>_evidence.json   # output infer -> input Module 4/5
-```
+### Module 4 — Anomaly-Guided Retrieval
 
-### Việc chia train / val / test diễn ra ở đâu?
+- Selects **top-K = 5** chunks by anomaly score from the full video
+- Samples **N = 4** evenly spaced frames per chunk
+- Computes a temporal pattern label (isolated / concentrated / scattered / mixed)
+- Bundles frames + per-chunk evidence into a single structured package
 
-- **`genuine` → train/val**: khi `train.py` chạy, nó gọi `split_report_files_by_video(report_files,
-  val_ratio=0.15)` để chia **tất cả** video trong `final_reports_genuine/` thành train (85%) và
-  val (15%) **ở cấp độ VIDEO** (không phải chunk, để tránh leakage giữa các chunk của cùng 1 video).
-  Tập val dùng cho: early stopping, calibrate `threshold` (percentile-95 của `joint_score`), và
-  validate scaler. Bạn **không cần** tự tạo thư mục train/val — chỉ cần bỏ tất cả video thực vào
-  `data/raw/genuine/`.
-- **`infer` = "test set"**: bất kỳ video muốn đánh giá (có thể là video thực giữ lại để test, hoặc
-  video lạ/nghi deepfake) đều đi vào `data/raw/infer/`.
+### Module 5 — Zero-Shot MLLM Reasoning
 
-> **Lưu ý dữ liệu hiện có**: các video hiện đang nằm phẳng trong `data/raw/` và `data/interim/`
-> (`2gOvQIMWbCY_56_1`, `30iBb8h9EQY_40_6`, `Donald_Trump`, `mavos-sample`) chưa nằm trong cấu trúc
-> `<mode>/` mới — cần được phân loại và copy/move vào `genuine/` hoặc `infer/` tương ứng trước khi
-> chạy lại pipeline cho video đó.
+<p align="center">
+  <img src="CSONET2026/figures/sample_prompt.png" width="85%" alt="Sample Prompt"/>
+</p>
+
+- Passes the evidence package to **frozen Qwen3-VL-8B-Instruct** in a single zero-shot prompt
+- Three-block prompt: (A) video-level summary, (B) per-chunk features + sampled frames, (C) five-step reasoning chain
+- Outputs structured JSON with:
+  - `video_fake` / `audio_fake` — separate flags per modality
+  - `label` — FAKE / GENUINE / UNCERTAIN
+  - `confidence`, manipulation type, free-text reasoning
 
 ---
 
-## 4. Cài đặt môi trường
+## Qualitative Case Studies
 
-- **Root** (`requirements.txt`): dùng cho Module 1 và Module 2.1 — `opencv`, `mediapipe`, `moviepy`, `numpy`, ...
-- **Module 3** (`src/module_3_autoencoder/requirements.txt`): `torch`, `scikit-learn`, `joblib`, ...
-- **Module 2.2**: cần thêm `torch`, `pytorch-lightning`, `transformers`, các pretrained model
-  (`pretrained_model/vsr_*.pth`, `whisper-medium-en`, `base_vox_iter5.pt`, `pure_MTDVocaLiST.pth`)
-  và 2 repo ngoài đặt cạnh project (`../av_hubert`, `../MTDVocaLiST`) — chi tiết xem
-  [`src/module_2_extraction/module_22_audio_visual_consistency/readme.md`](src/module_2_extraction/module_22_audio_visual_consistency/readme.md).
-- **Module 5**: cần API key Gemini/OpenAI, đặt trong `configs/.env` (đọc qua `python-dotenv`).
+<p align="center">
+  <img src="CSONET2026/figures/appendix_case1.png" width="100%" alt="Case 1 — Genuine, correct"/>
+  <br/><em>Case 1 — Genuine video correctly classified as GENUINE (anomaly score 2.57 ≪ τ = 15.54).</em>
+</p>
+
+<p align="center">
+  <img src="CSONET2026/figures/appendix_case2.png" width="100%" alt="Case 2 — Genuine, false positive"/>
+  <br/><em>Case 2 — Genuine multi-speaker interview incorrectly flagged as FAKE. Hard scene cuts between speakers trigger blending/kinematic CRITICAL features — the primary source of false positives.</em>
+</p>
+
+<p align="center">
+  <img src="CSONET2026/figures/appendix_case3.png" width="100%" alt="Case 3 — Fake, correct"/>
+  <br/><em>Case 3 — TTS + facial-animation deepfake correctly classified as FAKE. Near-zero blinking, mouth, and iris variance indicate synthetic animation; vocal jitter/shimmer indicate cloned voice.</em>
+</p>
 
 ---
 
-## 5. Hướng dẫn chạy end-to-end
+## Dataset
 
-### A. Chuẩn bị dữ liệu huấn luyện (genuine) → Module 3 train
+Evaluated on the **English subset of MAVOS-DD** ([Croitoru et al., 2025](https://arxiv.org/abs/2503.xxxxx)).
+
+| Split | Usage | # Videos |
+|---|---|---|
+| Genuine train | Module 3 training | 3,234 |
+| Genuine validation | Early stopping + threshold calibration | 513 |
+| Evaluation — genuine | — | 1,711 |
+| Evaluation — video-only fake | Face-swap / reenactment | 2,222 |
+| Evaluation — audio-only fake | Voice cloning / TTS | 543 |
+| Evaluation — both fake | Video + audio manipulated | 415 |
+| **Evaluation total** | | **4,891** |
+
+Video manipulations: HifiFace, Roop, InSwapper, EchoMimic, Sonic, LivePortrait, MEMO  
+Audio manipulations: KNNVC, FreeVC, OpenVoice, XTTS-v2, VITS
+
+**VERA-filtered split IDs** (genuine train/dev + evaluation set) are released under [`vera_mavosdd_splits/`](vera_mavosdd_splits/) for reproducibility.
+
+---
+
+## Installation
 
 ```bash
-# 1. Copy video THỰC vào data/raw/genuine/
+# Clone and create environment
+git clone https://github.com/UngHoangLong/VERA.git
+cd VERA
 
-# 2. Module 1: chunking + face crop
+# Core dependencies (Modules 1, 2.1, 2.3)
+pip install -r requirements.txt
+
+# Module 3
+pip install -r src/module_3_autoencoder/requirements.txt
+```
+
+**Module 2.2** additionally requires pretrained model weights for Auto-AVSR, AV-HuBERT, and VocaLiST, plus two external repositories (`av_hubert`, `MTDVocaLiST`) placed adjacent to the project root. See [`src/module_2_extraction/module_22_audio_visual_consistency/readme.md`](src/module_2_extraction/module_22_audio_visual_consistency/readme.md).
+
+**Module 5** requires a Qwen3-VL-8B-Instruct model (local or API). Place credentials in `configs/.env`.
+
+---
+
+## Usage
+
+### 1. Feature extraction (genuine videos → train Module 3)
+
+```bash
+# Place genuine videos in data/raw/genuine/
 python src/module_1_chunking/video_slicer.py --mode genuine
-
-# 3. Module 2.1: PHẢI chạy trước — tạo khung final_reports_genuine/<id>_report.json
 python src/module_2_extraction/module_21_visual_spatial_anomalies/main_21.py --mode genuine
-
-# 4. Module 2.2 và 2.3: chạy sau 2.1, thứ tự giữa 2 cái không quan trọng
 python src/module_2_extraction/module_22_audio_visual_consistency/main_22.py --mode genuine
 python src/module_2_extraction/module_23_audio_only/main_23.py --mode genuine
 ```
 
-→ `final_reports_genuine/*_report.json` đã có đủ 21 đặc trưng.
-
-### B. Huấn luyện Module 3
+### 2. Train anomaly scorer
 
 ```bash
 cd src/module_3_autoencoder
 ./run_train.sh
+# → module3_models/{mvae_poe.pt, preprocessor.joblib, threshold.json, feature_baseline.json}
 ```
 
-→ `module3_models/{mvae_poe.pt, preprocessor.joblib, threshold.json, feature_baseline.json}`
-
-### C. Chuẩn bị video cần kiểm tra (infer) → Module 3 inference
+### 3. Run inference on a target video
 
 ```bash
-# 1. Copy video cần kiểm tra vào data/raw/infer/
-
+# Place video(s) to evaluate in data/raw/infer/
 python src/module_1_chunking/video_slicer.py --mode infer
 python src/module_2_extraction/module_21_visual_spatial_anomalies/main_21.py --mode infer
 python src/module_2_extraction/module_22_audio_visual_consistency/main_22.py --mode infer
 python src/module_2_extraction/module_23_audio_only/main_23.py --mode infer
-```
 
-→ `final_reports_infer/*_report.json`
-
-### D. Tính anomaly score (Module 3 inference)
-
-```bash
 cd src/module_3_autoencoder
 ./run_infer.sh
+# → evidence_infer/<video_id>_evidence.json
 ```
 
-→ `evidence_reports/<video_id>_evidence.json` — sẵn sàng cho Module 4/5.
+### 4. MLLM reasoning (Module 5)
 
-### E. Module 4 + 5 — Retrieval & MLLM Reasoning (đang phát triển)
-
-`ranker.py` / `packager.py` (Module 4) và `prompt_eng.py` / `mllm_client.py` (Module 5) hiện là
-file khung; thiết kế prompt đầy đủ đã có trong
-[`src/module_5_agent/PROMPT_DESIGN_PROPOSAL.md`](src/module_5_agent/PROMPT_DESIGN_PROPOSAL.md).
+```bash
+python src/module_5_agent/mllm_client.py --evidence-dir evidence_infer/
+# → verdict JSON per video: label, confidence, per-modality flags, reasoning
+```
 
 ---
 
-## 6. Cấu trúc repo (rút gọn)
+## Repository Structure
 
 ```
-.
-├── configs/                    # config.yaml, .env (API key Module 5)
-├── data/                        # raw/ interim/ processed/  (gitignored)
-├── final_reports_genuine/       # output Module 2 (genuine) = input train Module 3
-├── final_reports_infer/         # output Module 2 (infer)   = input infer Module 3
+VERA/
 ├── src/
-│   ├── module_1_chunking/        # video_slicer.py + readme.md
+│   ├── module_1_chunking/          # Temporal chunking & face detection
 │   ├── module_2_extraction/
-│   │   ├── module_21_visual_spatial_anomalies/   # main_21.py + readme.md
-│   │   ├── module_22_audio_visual_consistency/   # main_22.py + readme.md
-│   │   └── module_23_audio_only/                 # main_23.py
-│   ├── module_3_autoencoder/     # train.py, infer.py, model.py, ... + README.md
-│   │   ├── module3_models/        # output train (gitignored)
-│   │   └── evidence_reports/      # output infer = input Module 4/5
-│   ├── module_4_retrieval/        # ranker.py, packager.py
-│   ├── module_5_agent/            # prompt_eng.py, mllm_client.py, PROMPT_DESIGN_PROPOSAL.md
-│   └── utils/                     # paths.py (mode-aware path config), face_crop, file_io, logger
-├── notebooks/
-├── paper/                        # tài liệu tham khảo (gitignored)
+│   │   ├── module_21_visual_spatial_anomalies/
+│   │   ├── module_22_audio_visual_consistency/
+│   │   └── module_23_audio_only/
+│   ├── module_3_autoencoder/       # MVAE-PoE training & inference
+│   ├── module_4_retrieval/         # Anomaly-guided chunk retrieval
+│   ├── module_5_agent/             # Zero-shot MLLM reasoning
+│   └── utils/
+├── vera_mavosdd_splits/            # Train / dev / test video IDs
+│   ├── train_ids.txt               # 3,234 genuine videos
+│   ├── dev_ids.txt                 # 513 genuine videos
+│   └── test_ids.txt                # 4,891 evaluation videos
+├── CSONET2026/                     # Paper source (LaTeX)
+├── configs/
 └── requirements.txt
 ```
 
-Mỗi module con có `readme.md`/`README.md` riêng với hướng dẫn chi tiết hơn (tham số, công thức,
-kiến trúc model...). README này chỉ mô tả bức tranh tổng thể và cách chạy end-to-end.
+---
+
+## Citation
+
+If you use VERA or the MAVOS-DD split IDs in your research, please cite:
+
+```bibtex
+@inproceedings{ung2026vera,
+  title     = {VERA: A Scalable Zero-Shot Framework for Explainable Deepfake Detection in Long-Form Video},
+  author    = {Ung, Hoang Long and Tran Duy Dinh, Truong and Luu, Son T.},
+  booktitle = {Computational Science and Network Intelligence (CSoNet 2026)},
+  series    = {Lecture Notes in Computer Science},
+  publisher = {Springer Nature},
+  year      = {2026}
+}
+```
 
 ---
 
-## 7. Tài liệu tham khảo
+## Acknowledgements
 
-Các paper nền tảng cho thiết kế (MVAE-PoE, RAG cho deepfake detection, MLLM reasoning, ...) nằm
-trong [`paper/`](paper/).
+Computational resources provided by the University of Information Technology, VNU-HCM.  
+AI-assisted copy editing performed using Claude (Anthropic).
