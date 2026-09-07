@@ -130,14 +130,9 @@ class VideoSlicer:
             chunk_clip = clip.subclipped(start_t, end_t)
 
             video_file = chunk_dir / "video.mp4"
-            preview_file = chunk_dir / "preview.mp4"
 
             chunk_clip.write_videofile(
                 str(video_file), audio=False, codec="libx264", logger=None
-            )
-            chunk_clip.write_videofile(
-                str(preview_file), audio=True, ffmpeg_params=["-crf", "18"], logger=None,
-                temp_audiofile=str(chunk_dir / "temp_audio.mp3"),
             )
 
             if clip.audio:
