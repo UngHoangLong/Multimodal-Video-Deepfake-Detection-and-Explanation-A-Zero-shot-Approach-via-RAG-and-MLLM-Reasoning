@@ -216,8 +216,13 @@ def run_ccfd(python_bin):
 
 
 def run_scfd(python_bin):
+    # SCFD depends on fairseq, which needs numpy/omegaconf/hydra versions far
+    # older than the rest of the pipeline. It runs in its own venv to avoid
+    # breaking the main environment. Override with SCFD_PYTHON_BIN if the venv
+    # lives somewhere other than the default.
+    scfd_python_bin = os.environ.get("SCFD_PYTHON_BIN", "/workspace/venv_scfd/bin/python")
     command = [
-        python_bin,
+        scfd_python_bin,
         SCRIPT_SCFD,
         "--input-root", str(INTERIM_DIR),
         "--input-video-name", INPUT_VIDEO_NAME,
