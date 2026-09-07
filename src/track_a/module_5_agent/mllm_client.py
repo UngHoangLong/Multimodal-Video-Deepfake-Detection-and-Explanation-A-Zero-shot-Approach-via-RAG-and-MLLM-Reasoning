@@ -30,8 +30,8 @@ from typing import Any, Dict, List, Tuple
 
 from tqdm import tqdm
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from src.module_5_agent.prompt_eng import build_system_prompt, build_user_prompt
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+from src.track_a.module_5_agent.prompt_eng import build_system_prompt, build_user_prompt
 
 QWEN_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 INTERNVL_MODEL = "OpenGVLab/InternVL2_5-8B"

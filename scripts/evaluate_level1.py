@@ -7,7 +7,7 @@ Labels: from manifest.csv (video_path → label, generative_method, etc.)
 
 Usage:
     python scripts/evaluate_level1.py \
-      --evidence-dir src/module_3_autoencoder/evidence_reports/infer \
+      --evidence-dir src/track_a/module_3_autoencoder/evidence_reports/infer \
       --manifest data/external/mavos_dd_en/manifest.csv
 """
 

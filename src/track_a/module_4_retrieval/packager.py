@@ -30,9 +30,9 @@ from typing import Any, Dict, List, Tuple
 import cv2
 from tqdm import tqdm
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from src.utils.paths import get_pipeline_paths, VALID_MODES
-from src.module_4_retrieval.ranker import (
+from src.track_a.module_4_retrieval.ranker import (
     compute_video_summary,
     load_evidence,
     rank_chunks,

@@ -6,14 +6,14 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
 from src.utils.paths import get_pipeline_paths, VALID_MODES
 
 
 # ==========================================
 # CẤU HÌNH ĐƯỜNG DẪN TỔNG QUÁT
 # ==========================================
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 # Mode-dependent paths (genuine/infer) — set by _configure_paths() before the
 # pipeline runs.
@@ -27,7 +27,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 # ==========================================
 # CẤU HÌNH ĐƯỜNG DẪN SCRIPT
 # ==========================================
-MODULE_DIR = "src/module_2_extraction/module_22_audio_visual_consistency"
+MODULE_DIR = "src/track_a/module_2_extraction/module_22_audio_visual_consistency"
 
 SCRIPT_BUILD_INPUT = f"{MODULE_DIR}/build_vsr_asr_input_from_slides.py"
 SCRIPT_VSR = f"{MODULE_DIR}/run_vsr_inference_per_chunk.py"
@@ -91,6 +91,14 @@ def _configure_paths(mode: str) -> None:
 # ==========================================
 # CẤU HÌNH THAM SỐ CHUNG
 # ==========================================
+
+# Improvement 1b: skip lip-sync features for silent faces.
+# If mouth_movement_variance (from Module 2.1) is below this threshold, the dominant
+# face is not speaking → TCFD/SCFD/WER scores are meaningless (they compare a closed
+# mouth against an off-camera speaker's voice) → null them so Module 3 masks them out.
+# Calibrate on genuine val set: expect bimodal distribution (silent ≈ 0, speaking > 1e-3).
+SILENT_MOUTH_THRESHOLD = 1e-4
+
 INPUT_VIDEO_NAME = "vsr_input.mp4"
 INPUT_AUDIO_NAME = "sync_audio.wav"
 LANGUAGE = "english"
@@ -316,38 +324,75 @@ def update_final_report(video_id: str, chunk_id: str):
     if not ccfd_data:
         return
 
-    scfd_payload = read_scfd_data(video_id, chunk_id)
-    tcfd_payload = read_tcfd_data(video_id, chunk_id)
-
-    audio_visual_payload = {
-        "transcripts": {
-            "asr_text_audio": ccfd_data.get("reference_text_norm", ""),
-            "vsr_text_lips": ccfd_data.get("hypothesis_text_norm", ""),
-            "wer_score": ccfd_data.get("wer", None),
-        },
-        "semantic_consistency": {
-            "mean_cosine_similarity": scfd_payload.get("mean_cosine_similarity"),
-            "min_cosine_similarity": scfd_payload.get("min_cosine_similarity"),
-            "percentile_3rd_cosine": scfd_payload.get("percentile_3rd_cosine"),
-        },
-        "temporal_sync": {
-            "sync_score": tcfd_payload.get("sync_score"),
-            "min_sync_score": tcfd_payload.get("min_sync_score"),
-            "variance": tcfd_payload.get("variance"),
-        },
-    }
-
     with open(report_path, "r", encoding="utf-8") as f:
         report = json.load(f)
 
-    if chunk_id in report.get("chunks", {}):
-        report["chunks"][chunk_id]["audio_visual_consistency"] = audio_visual_payload
-        report["video_metadata"]["status"] = "fully_analyzed"
+    if chunk_id not in report.get("chunks", {}):
+        return
 
-        with open(report_path, "w", encoding="utf-8") as f:
-            json.dump(report, f, indent=4, ensure_ascii=False)
+    # 1b: check if dominant face is silent (not speaking).
+    mouth_var = (
+        report["chunks"][chunk_id]
+        .get("visual_spatial", {})
+        .get("kinematics", {})
+        .get("mouth_movement_variance")
+    )
+    is_silent = (mouth_var is not None) and (mouth_var < SILENT_MOUTH_THRESHOLD)
 
-        print(f"Đã cập nhật Report: {video_id} - {chunk_id}")
+    if is_silent:
+        # Dominant face is silent — lip-sync features compare a closed mouth against an
+        # off-camera speaker's voice, which produces the same signal as a deepfake.
+        # Null all three lip-sync sub-scores so Module 3 masks them out rather than
+        # flagging them as anomalous. WER is also nulled: VSR output for a closed mouth
+        # is garbage, making WER meaningless.
+        audio_visual_payload = {
+            "lip_sync_skipped": True,
+            "lip_sync_skip_reason": "silent face — mouth_movement_variance below threshold",
+            "transcripts": {
+                "asr_text_audio": ccfd_data.get("reference_text_norm", ""),
+                "vsr_text_lips": ccfd_data.get("hypothesis_text_norm", ""),
+                "wer_score": None,
+            },
+            "semantic_consistency": {
+                "mean_cosine_similarity": None,
+                "min_cosine_similarity": None,
+                "percentile_3rd_cosine": None,
+            },
+            "temporal_sync": {
+                "sync_score": None,
+                "min_sync_score": None,
+                "variance": None,
+            },
+        }
+        print(f"  [1b] {video_id}/{chunk_id}: silent face (mouth_var={mouth_var:.2e}) → lip sync skipped")
+    else:
+        scfd_payload = read_scfd_data(video_id, chunk_id)
+        tcfd_payload = read_tcfd_data(video_id, chunk_id)
+        audio_visual_payload = {
+            "transcripts": {
+                "asr_text_audio": ccfd_data.get("reference_text_norm", ""),
+                "vsr_text_lips": ccfd_data.get("hypothesis_text_norm", ""),
+                "wer_score": ccfd_data.get("wer", None),
+            },
+            "semantic_consistency": {
+                "mean_cosine_similarity": scfd_payload.get("mean_cosine_similarity"),
+                "min_cosine_similarity": scfd_payload.get("min_cosine_similarity"),
+                "percentile_3rd_cosine": scfd_payload.get("percentile_3rd_cosine"),
+            },
+            "temporal_sync": {
+                "sync_score": tcfd_payload.get("sync_score"),
+                "min_sync_score": tcfd_payload.get("min_sync_score"),
+                "variance": tcfd_payload.get("variance"),
+            },
+        }
+
+    report["chunks"][chunk_id]["audio_visual_consistency"] = audio_visual_payload
+    report["video_metadata"]["status"] = "fully_analyzed"
+
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=4, ensure_ascii=False)
+
+    print(f"Đã cập nhật Report: {video_id} - {chunk_id}")
 
 
 def synthesize_reports():

@@ -6,7 +6,7 @@ Compares verdict JSON (video_fake, audio_fake, label) against manifest.csv label
 
 Usage:
     python scripts/evaluate_level2.py \
-      --verdicts-dir src/module_5_agent/verdicts_qwen \
+      --verdicts-dir src/track_a/module_5_agent/verdicts_qwen \
       --manifest data/external/mavos_dd_en/manifest.csv \
       --backend qwen
 """

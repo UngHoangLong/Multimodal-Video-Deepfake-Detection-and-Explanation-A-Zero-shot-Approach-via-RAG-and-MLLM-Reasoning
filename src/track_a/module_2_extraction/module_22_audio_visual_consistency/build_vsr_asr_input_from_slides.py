@@ -14,7 +14,7 @@ import shutil
 
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..')))
 from src.utils.file_io import collect_slide_pairs
 
 

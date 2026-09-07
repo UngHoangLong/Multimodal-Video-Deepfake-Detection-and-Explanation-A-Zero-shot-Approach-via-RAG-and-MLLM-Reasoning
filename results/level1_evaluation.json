@@ -1,0 +1,162 @@
+{
+  "summary": {
+    "total_matched": 5648,
+    "total_real": 2468,
+    "total_fake": 3180,
+    "unmatched_in_manifest": 9267,
+    "unmatched_in_evidence": 5
+  },
+  "overall_binary": {
+    "auc_roc": 0.532,
+    "metrics_at_threshold_15.537153244018555": {
+      "tp": 150,
+      "tn": 2328,
+      "fp": 140,
+      "fn": 3030,
+      "accuracy": 0.4387,
+      "precision": 0.5172,
+      "recall": 0.0472,
+      "f1": 0.0865
+    },
+    "optimal_threshold": 2.1557,
+    "metrics_at_optimal_threshold": {
+      "tp": 3153,
+      "tn": 30,
+      "fp": 2438,
+      "fn": 27,
+      "accuracy": 0.5636,
+      "precision": 0.5639,
+      "recall": 0.9915,
+      "f1": 0.719
+    }
+  },
+  "score_distribution": {
+    "real": {
+      "count": 2468,
+      "mean": 7.9848,
+      "median": 5.0278,
+      "std": 29.083,
+      "p95": 16.0865
+    },
+    "fake": {
+      "count": 3180,
+      "mean": 12.3594,
+      "median": 5.557,
+      "std": 240.9013,
+      "p5": 2.5224
+    }
+  },
+  "per_fake_type": {
+    "audio_only": {
+      "count": 543,
+      "mean_score": 7.2162,
+      "median_score": 4.7482,
+      "std_score": 11.694,
+      "pct_above_threshold": 5.34
+    },
+    "both": {
+      "count": 415,
+      "mean_score": 6.4552,
+      "median_score": 5.1797,
+      "std_score": 5.0059,
+      "pct_above_threshold": 2.89
+    },
+    "real": {
+      "count": 2468,
+      "mean_score": 7.9848,
+      "median_score": 5.0278,
+      "std_score": 29.083,
+      "pct_above_threshold": 5.67
+    },
+    "video_only": {
+      "count": 2222,
+      "mean_score": 14.719,
+      "median_score": 5.7556,
+      "std_score": 288.0928,
+      "pct_above_threshold": 4.91
+    }
+  },
+  "per_method": {
+    "echomimic": {
+      "count": 303,
+      "mean_score": 5.9692,
+      "median_score": 4.9055,
+      "std_score": 3.1225,
+      "min_score": 2.4096,
+      "max_score": 16.3784,
+      "pct_above_threshold": 1.32
+    },
+    "hififace": {
+      "count": 868,
+      "mean_score": 7.175,
+      "median_score": 5.4572,
+      "std_score": 13.2488,
+      "min_score": 1.7125,
+      "max_score": 354.0375,
+      "pct_above_threshold": 3.92
+    },
+    "inswapper": {
+      "count": 513,
+      "mean_score": 37.214,
+      "median_score": 5.8905,
+      "std_score": 598.0704,
+      "min_score": 1.95,
+      "max_score": 13529.4845,
+      "pct_above_threshold": 6.63
+    },
+    "liveportrait": {
+      "count": 61,
+      "mean_score": 8.8052,
+      "median_score": 5.5226,
+      "std_score": 10.7502,
+      "min_score": 2.4811,
+      "max_score": 43.1472,
+      "pct_above_threshold": 9.84
+    },
+    "memo": {
+      "count": 45,
+      "mean_score": 6.2526,
+      "median_score": 5.0217,
+      "std_score": 3.9353,
+      "min_score": 2.2814,
+      "max_score": 24.5351,
+      "pct_above_threshold": 2.22
+    },
+    "real": {
+      "count": 2468,
+      "mean_score": 7.9848,
+      "median_score": 5.0278,
+      "std_score": 29.083,
+      "min_score": 1.7383,
+      "max_score": 1144.0378,
+      "pct_above_threshold": 5.67
+    },
+    "real_video_audio_only_fake": {
+      "count": 543,
+      "mean_score": 7.2162,
+      "median_score": 4.7482,
+      "std_score": 11.694,
+      "min_score": 1.8787,
+      "max_score": 188.5378,
+      "pct_above_threshold": 5.34
+    },
+    "roop": {
+      "count": 655,
+      "mean_score": 9.102,
+      "median_score": 6.5899,
+      "std_score": 23.7047,
+      "min_score": 1.9933,
+      "max_score": 478.6579,
+      "pct_above_threshold": 5.5
+    },
+    "sonic": {
+      "count": 192,
+      "mean_score": 7.6919,
+      "median_score": 5.3961,
+      "std_score": 18.5797,
+      "min_score": 2.4851,
+      "max_score": 257.6303,
+      "pct_above_threshold": 3.12
+    }
+  }
+}

@@ -1,0 +1,199 @@
+{
+  "backend": "qwen",
+  "summary": {
+    "total_matched": 5648,
+    "no_evidence_excluded": 3111,
+    "total_certain": 5648,
+    "total_uncertain": 0,
+    "total_real_gt": 2468,
+    "total_fake_gt": 3180
+  },
+  "verdict_distribution": {
+    "FAKE": 4589,
+    "GENUINE": 1059
+  },
+  "confidence_distribution": {
+    "HIGH": 5644,
+    "MEDIUM": 4
+  },
+  "overall_binary": {
+    "tp": 2701,
+    "tn": 580,
+    "fp": 1888,
+    "fn": 479,
+    "total": 5648,
+    "accuracy": 0.5809,
+    "precision": 0.5886,
+    "recall": 0.8494,
+    "f1": 0.6953
+  },
+  "video_fake_detection": {
+    "tp": 1173,
+    "tn": 1790,
+    "fp": 1221,
+    "fn": 1464,
+    "total": 5648,
+    "accuracy": 0.5246,
+    "precision": 0.49,
+    "recall": 0.4448,
+    "f1": 0.4663
+  },
+  "audio_fake_detection": {
+    "tp": 741,
+    "tn": 1342,
+    "fp": 3348,
+    "fn": 217,
+    "total": 5648,
+    "accuracy": 0.3688,
+    "precision": 0.1812,
+    "recall": 0.7735,
+    "f1": 0.2936
+  },
+  "per_fake_type": {
+    "audio_only": {
+      "tp": 421,
+      "tn": 0,
+      "fp": 0,
+      "fn": 122,
+      "total": 543,
+      "accuracy": 0.7753,
+      "precision": 1.0,
+      "recall": 0.7753,
+      "f1": 0.8734
+    },
+    "both": {
+      "tp": 381,
+      "tn": 0,
+      "fp": 0,
+      "fn": 34,
+      "total": 415,
+      "accuracy": 0.9181,
+      "precision": 1.0,
+      "recall": 0.9181,
+      "f1": 0.9573
+    },
+    "real": {
+      "tp": 0,
+      "tn": 580,
+      "fp": 1888,
+      "fn": 0,
+      "total": 2468,
+      "accuracy": 0.235,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "video_only": {
+      "tp": 1899,
+      "tn": 0,
+      "fp": 0,
+      "fn": 323,
+      "total": 2222,
+      "accuracy": 0.8546,
+      "precision": 1.0,
+      "recall": 0.8546,
+      "f1": 0.9216
+    }
+  },
+  "per_method": {
+    "echomimic": {
+      "tp": 301,
+      "tn": 0,
+      "fp": 0,
+      "fn": 2,
+      "total": 303,
+      "accuracy": 0.9934,
+      "precision": 1.0,
+      "recall": 0.9934,
+      "f1": 0.9967
+    },
+    "hififace": {
+      "tp": 668,
+      "tn": 0,
+      "fp": 0,
+      "fn": 200,
+      "total": 868,
+      "accuracy": 0.7696,
+      "precision": 1.0,
+      "recall": 0.7696,
+      "f1": 0.8698
+    },
+    "inswapper": {
+      "tp": 445,
+      "tn": 0,
+      "fp": 0,
+      "fn": 68,
+      "total": 513,
+      "accuracy": 0.8674,
+      "precision": 1.0,
+      "recall": 0.8674,
+      "f1": 0.929
+    },
+    "liveportrait": {
+      "tp": 55,
+      "tn": 0,
+      "fp": 0,
+      "fn": 6,
+      "total": 61,
+      "accuracy": 0.9016,
+      "precision": 1.0,
+      "recall": 0.9016,
+      "f1": 0.9483
+    },
+    "memo": {
+      "tp": 44,
+      "tn": 0,
+      "fp": 0,
+      "fn": 1,
+      "total": 45,
+      "accuracy": 0.9778,
+      "precision": 1.0,
+      "recall": 0.9778,
+      "f1": 0.9888
+    },
+    "real": {
+      "tp": 0,
+      "tn": 580,
+      "fp": 1888,
+      "fn": 0,
+      "total": 2468,
+      "accuracy": 0.235,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "real_video_audio_only_fake": {
+      "tp": 421,
+      "tn": 0,
+      "fp": 0,
+      "fn": 122,
+      "total": 543,
+      "accuracy": 0.7753,
+      "precision": 1.0,
+      "recall": 0.7753,
+      "f1": 0.8734
+    },
+    "roop": {
+      "tp": 575,
+      "tn": 0,
+      "fp": 0,
+      "fn": 80,
+      "total": 655,
+      "accuracy": 0.8779,
+      "precision": 1.0,
+      "recall": 0.8779,
+      "f1": 0.935
+    },
+    "sonic": {
+      "tp": 192,
+      "tn": 0,
+      "fp": 0,
+      "fn": 0,
+      "total": 192,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  }
+}

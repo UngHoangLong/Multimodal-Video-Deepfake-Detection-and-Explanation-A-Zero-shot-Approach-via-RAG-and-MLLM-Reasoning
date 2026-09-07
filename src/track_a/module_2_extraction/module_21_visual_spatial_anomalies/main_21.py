@@ -19,7 +19,7 @@ from gaze_pose import GazePoseFeature
 # Import hàm tìm chuỗi từ thư mục utils (Sử dụng đường dẫn tuyệt đối từ src)
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..')))
 from src.utils.file_io import collect_slide_pairs
 from src.utils.paths import get_pipeline_paths, VALID_MODES
 

@@ -11,9 +11,10 @@ from moviepy import VideoFileClip
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from src.utils.face_crop import AdvancedFaceCropper
 from src.utils.paths import get_pipeline_paths, VALID_MODES
+from src.utils.face_reid import FaceReID
 
 
 def _worker_process_video(args):
@@ -34,6 +35,11 @@ class VideoSlicer:
             face_size=face_size,
             margin_ratio=margin_ratio
         )
+        try:
+            self.reid = FaceReID()
+        except FileNotFoundError as e:
+            print(f"[Warning] Scene-cut detection disabled: {e}")
+            self.reid = None
 
     def process_directory(self, input_dir, output_dir, workers=1, min_duration=0.0):
         input_dir = Path(input_dir)
@@ -141,6 +147,10 @@ class VideoSlicer:
 
             self._create_slides(video_file, chunk_dir / "slides", fps)
 
+            # Scene-cut detection: trim minority-identity slides before counting
+            if self.reid is not None:
+                self._reid_filter(chunk_dir / "slides", chunk_dir / "metadata.json")
+
             # FILTER: KIỂM TRA SỐ LƯỢNG SLIDE VÀ XÓA NẾU <= 3
             slides_dir = chunk_dir / "slides"
             valid_slides_count = len(list(slides_dir.glob("*_faces.npy")))
@@ -191,6 +201,91 @@ class VideoSlicer:
 
         with open(chunk_dir / "metadata.json", "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=4, ensure_ascii=False)
+
+    def _reid_filter(self, slides_dir, metadata_path):
+        """
+        Detect the first identity change across consecutive slides and discard
+        the minority sub-sequence, keeping only the dominant (longer) one.
+
+        After this call, slides_dir contains only single-identity .npy files,
+        so Module 2 blending/kinematics are computed on a clean track.
+        """
+        slides_dir = Path(slides_dir)
+        npy_files = sorted(slides_dir.glob("*_faces.npy"))
+
+        if len(npy_files) < 2:
+            return
+
+        # Build a flat list of (frame_embedding, slide_index) for ALL frames in order
+        frame_embs = []   # list of (embedding | None, slide_idx)
+        for slide_idx, npy_path in enumerate(npy_files):
+            try:
+                data = np.load(npy_path, allow_pickle=True)
+                frames = data if data.ndim == 4 else data[np.newaxis]
+                for frame in frames:
+                    frame_embs.append((self.reid.embed(frame), slide_idx))
+            except Exception:
+                frame_embs.append((None, slide_idx))
+
+        # Find all frame-level cuts (consecutive frames with different identity)
+        cut_frame_indices = []
+        for i in range(len(frame_embs) - 1):
+            ea, _ = frame_embs[i]
+            eb, _ = frame_embs[i + 1]
+            if ea is not None and eb is not None:
+                if not self.reid.is_same_person(ea, eb):
+                    cut_frame_indices.append(i)
+
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+
+        if not cut_frame_indices:
+            meta["scene_cut"] = False
+        else:
+            # Assign a segment index to every frame
+            frame_seg = []
+            seg_idx = 0
+            cut_set = set(cut_frame_indices)
+            for i in range(len(frame_embs)):
+                frame_seg.append(seg_idx)
+                if i in cut_set:
+                    seg_idx += 1
+
+            # Collect all segment indices each slide's frames touch
+            from collections import defaultdict, Counter
+            slide_segs: dict = defaultdict(set)
+            for fi, (_, si) in enumerate(frame_embs):
+                slide_segs[si].add(frame_seg[fi])
+
+            # Pure slide  → all frames in exactly 1 segment → safe to keep
+            # Mixed slide → frames span a cut boundary    → discard entirely
+            # (metadata stores timestamps per slide, not per frame)
+            pure_slide_to_seg = {si: next(iter(segs))
+                                  for si, segs in slide_segs.items() if len(segs) == 1}
+
+            # Dominant segment = the one with the most pure slides
+            seg_counts = Counter(pure_slide_to_seg.values())
+            dominant_seg = seg_counts.most_common(1)[0][0]
+
+            dominant_slide_indices = {si for si, s in pure_slide_to_seg.items()
+                                       if s == dominant_seg}
+            discard_indices = set(range(len(npy_files))) - dominant_slide_indices
+
+            for i in discard_indices:
+                npy_files[i].unlink(missing_ok=True)
+                lm = slides_dir / npy_files[i].name.replace("_faces.npy", "_landmarks.npy")
+                lm.unlink(missing_ok=True)
+
+            meta["scene_cut"] = True
+            kept = [npy_files[i] for i in range(len(npy_files)) if i in dominant_slide_indices]
+            meta["dominant_identity_slides"] = [p.stem.replace("_faces", "") for p in kept]
+            print(
+                f"    [ReID] {len(cut_frame_indices)} frame-cut(s) — "
+                f"kept {len(dominant_slide_indices)}/{len(npy_files)} slides"
+            )
+
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=4, ensure_ascii=False)
 
     def _create_slides(self, video_path, slides_dir, fps):
         slides_dir.mkdir(parents=True, exist_ok=True)
