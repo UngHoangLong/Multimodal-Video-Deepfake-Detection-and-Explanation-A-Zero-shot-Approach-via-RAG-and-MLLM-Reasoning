@@ -17,6 +17,12 @@ class AdvancedFaceCropper:
         except ImportError:
             raise ImportError('Vui lòng cài đặt mediapipe: pip install mediapipe')
 
+    def close(self):
+        """Release MediaPipe's native (C++) resources. Must be called explicitly —
+        garbage-collecting the Python object does not free the underlying graph,
+        which leaks memory when a new FaceMesh is created per video in a worker."""
+        self.face_mesh.close()
+
     def _landmarks_bbox(self, landmarks, w, h):
         xs = [lm.x * w for lm in landmarks]
         ys = [lm.y * h for lm in landmarks]

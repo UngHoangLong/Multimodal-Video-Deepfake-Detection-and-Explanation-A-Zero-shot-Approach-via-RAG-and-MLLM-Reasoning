@@ -20,7 +20,13 @@ from src.utils.face_reid import FaceReID
 def _worker_process_video(args):
     video_path, output_dir, chunk_duration, stride, slide_duration, min_duration = args
     slicer = VideoSlicer(chunk_duration=chunk_duration, stride=stride, slide_duration=slide_duration)
-    slicer.process_video(video_path, output_dir, min_duration=min_duration)
+    try:
+        slicer.process_video(video_path, output_dir, min_duration=min_duration)
+    finally:
+        # MediaPipe's FaceMesh leaks native memory if not closed explicitly —
+        # a new VideoSlicer (and FaceMesh) is created per video in this worker,
+        # so without this the leak accumulates until the worker process OOMs.
+        slicer.face_cropper.close()
 
 
 class VideoSlicer:
@@ -69,14 +75,7 @@ class VideoSlicer:
                 for vf in todo
             ]
             ctx = multiprocessing.get_context("spawn")
-            # max_tasks_per_child: recycle each worker after N videos. MediaPipe
-            # FaceMesh / SFace ONNX leak memory per-process over many videos;
-            # without recycling, a worker eventually OOMs and crashes the whole
-            # pool (observed: ~2000+ videos in with workers=4). Restarting the
-            # worker periodically keeps its memory footprint bounded.
-            with ProcessPoolExecutor(
-                max_workers=workers, mp_context=ctx, max_tasks_per_child=50
-            ) as pool:
+            with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
                 futures = {pool.submit(_worker_process_video, a): a[0] for a in args_list}
                 for future in tqdm(as_completed(futures), total=len(futures),
                                    desc=input_dir.name, unit="video"):
