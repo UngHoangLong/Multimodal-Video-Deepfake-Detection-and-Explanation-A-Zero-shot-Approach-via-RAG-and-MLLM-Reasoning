@@ -69,7 +69,14 @@ class VideoSlicer:
                 for vf in todo
             ]
             ctx = multiprocessing.get_context("spawn")
-            with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
+            # max_tasks_per_child: recycle each worker after N videos. MediaPipe
+            # FaceMesh / SFace ONNX leak memory per-process over many videos;
+            # without recycling, a worker eventually OOMs and crashes the whole
+            # pool (observed: ~2000+ videos in with workers=4). Restarting the
+            # worker periodically keeps its memory footprint bounded.
+            with ProcessPoolExecutor(
+                max_workers=workers, mp_context=ctx, max_tasks_per_child=50
+            ) as pool:
                 futures = {pool.submit(_worker_process_video, a): a[0] for a in args_list}
                 for future in tqdm(as_completed(futures), total=len(futures),
                                    desc=input_dir.name, unit="video"):
