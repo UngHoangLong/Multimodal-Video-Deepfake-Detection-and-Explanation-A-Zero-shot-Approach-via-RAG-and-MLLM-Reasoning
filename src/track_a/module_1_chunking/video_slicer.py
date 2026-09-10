@@ -266,10 +266,17 @@ class VideoSlicer:
 
             # Dominant segment = the one with the most pure slides
             seg_counts = Counter(pure_slide_to_seg.values())
-            dominant_seg = seg_counts.most_common(1)[0][0]
-
-            dominant_slide_indices = {si for si, s in pure_slide_to_seg.items()
-                                       if s == dominant_seg}
+            if seg_counts:
+                dominant_seg = seg_counts.most_common(1)[0][0]
+                dominant_slide_indices = {si for si, s in pure_slide_to_seg.items()
+                                           if s == dominant_seg}
+            else:
+                # No slide is "pure" — every slide spans a cut boundary, meaning
+                # the scene changes faster than one slide (0.5s). There is no
+                # stable identity segment to keep, so discard every slide in
+                # this chunk; the caller's <=3-slide check then drops the
+                # chunk, without raising and losing the rest of the video.
+                dominant_slide_indices = set()
             discard_indices = set(range(len(npy_files))) - dominant_slide_indices
 
             for i in discard_indices:
